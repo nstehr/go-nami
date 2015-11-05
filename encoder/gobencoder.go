@@ -5,9 +5,15 @@ import (
 	"encoding/gob"
 
 	"github.com/nstehr/go-nami/message"
+	"github.com/nstehr/go-nami/shared/transfer"
 )
 
 type GobEncoder struct{}
+
+func NewGobEncoder() GobEncoder {
+	gob.Register(transfer.Config{})
+	return GobEncoder{}
+}
 
 func (g GobEncoder) Encode(msg *message.Packet) ([]byte, error) {
 	var buf bytes.Buffer

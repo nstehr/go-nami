@@ -7,21 +7,23 @@ import (
 	"github.com/nstehr/go-nami/client"
 	"github.com/nstehr/go-nami/encoder"
 	"github.com/nstehr/go-nami/server"
+	"github.com/nstehr/go-nami/shared/transfer"
 )
 
 func main() {
-	e := encoder.GobEncoder{}
+	e := encoder.NewGobEncoder()
 	t := flag.String("type", "server", "")
 	flag.Parse()
 	if *t == "client" {
-		c := client.NewClient(e)
+		config := transfer.Config{}
+		c := client.NewClient("Downloads", config, e)
 		statusCh := c.GetFile("foo.txt", ":46224")
 		for status := range statusCh {
 			log.Println(status)
 		}
 
 	} else {
-		s := server.NewServer(e, 46224)
+		s := server.NewServer(e, 46224, "Uploads")
 		s.StartListening()
 	}
 

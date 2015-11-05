@@ -45,7 +45,7 @@ func SendPacket(pkt *message.Packet, conn net.Conn, encoder encoder.Encoder) (in
 	return numBytes, nil
 }
 
-func ReadPackets(conn net.Conn, e encoder.Encoder, ch chan transfer.Progress, initialState statemachine.StateFn) {
+func ReadPackets(conn net.Conn, e encoder.Encoder, transfer transfer.Transfer, initialState statemachine.StateFn) {
 	inTransmission := true
 	stateMachine := statemachine.NewStateMachine(initialState)
 	for inTransmission {
@@ -53,14 +53,14 @@ func ReadPackets(conn net.Conn, e encoder.Encoder, ch chan transfer.Progress, in
 		// Read the incoming connection into the buffer.
 		numBytes, err := conn.Read(data)
 		if err != nil {
-			log.Println(err)
+			log.Println("Error reading bytes: " + err.Error())
 			return
 		}
 		packet, err := e.Decode(data, numBytes)
 		if err != nil {
-			log.Println(err)
+			log.Println("Error decoding bytes: " + err.Error())
 			return
 		}
-		inTransmission = stateMachine.Transition(packet, e, conn, ch)
+		inTransmission = stateMachine.Transition(packet, e, conn, transfer)
 	}
 }
