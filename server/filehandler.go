@@ -61,13 +61,24 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 				return
 			}
 			if msg.msgType == message.RETRANSMIT {
-
 				rt := msg.payload.(message.Retransmit)
 				blocks := rt.BlockNums
-				for i, block := range blocks {
-					sendDataPkt(file, blockSize, block, conn, e, message.RETRANSMITTED)
-					if i > 0 && int64(i)%blockRate == 0 {
-						time.Sleep(time.Second * 1)
+				if !rt.IsRestart {
+					for i, block := range blocks {
+						sendDataPkt(file, blockSize, block, conn, e, message.RETRANSMITTED)
+						if i > 0 && int64(i)%blockRate == 0 {
+							time.Sleep(time.Second * 1)
+						}
+					}
+				} else {
+					startBlock := blocks[0]
+					blockCount := 0
+					for i := startBlock; i < numBlocks; i++ {
+						sendDataPkt(file, blockSize, i, conn, e, message.ORIGINAL)
+						if int64(blockCount)%blockRate == 0 {
+							time.Sleep(time.Second * 1)
+						}
+						blockCount++
 					}
 				}
 			}

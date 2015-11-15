@@ -52,7 +52,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 						retransmitBlocks = insertRetransmitBlock(retransmitBlocks, i)
 					}
 				}
-				requestRetransmit(retransmitBlocks, bs, controlConn, e)
+				requestRetransmit(retransmitBlocks, bs, controlConn, e, t.Config().MaxMissedLength)
 				retransmitBlocks = []int64{}
 				dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 				continue
@@ -96,7 +96,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		}
 		//finally, if we meet our retransmit criteria, send message to server
 		if shouldRetransmit(bs.Count(), lastRetransmitTime) {
-			requestRetransmit(retransmitBlocks, bs, controlConn, e)
+			requestRetransmit(retransmitBlocks, bs, controlConn, e, t.Config().MaxMissedLength)
 			retransmitBlocks = []int64{}
 			lastRetransmitTime = time.Now()
 		}
@@ -133,14 +133,19 @@ func insertRetransmitBlock(blocks []int64, block int64) []int64 {
 	return blocks
 }
 
-func requestRetransmit(blocks []int64, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder) {
+func requestRetransmit(blocks []int64, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder, maxMissedLength int) {
 	var missingBlocks []int64
+	isRestart := false
 	for _, b := range blocks {
 		if !bs.Test(uint(b)) {
 			missingBlocks = append(missingBlocks, b)
 		}
 	}
-	payload := message.Retransmit{IsRestart: false, BlockNums: missingBlocks}
+	if len(missingBlocks) > maxMissedLength {
+		isRestart = true
+		missingBlocks = missingBlocks[0:1]
+	}
+	payload := message.Retransmit{IsRestart: isRestart, BlockNums: missingBlocks}
 	pkt := message.Packet{Type: message.RETRANSMIT, Payload: payload}
 	_, err := shared.SendPacket(&pkt, conn, e)
 	if err != nil {
