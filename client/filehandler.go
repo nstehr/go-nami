@@ -21,7 +21,7 @@ const (
 )
 
 func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *ClientTransfer) {
-	numBlocks := math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize))
+	numBlocks := int64(math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize)))
 	log.Println(numBlocks)
 	bs := bitset.New(uint(numBlocks))
 	defer dataConn.Close()
@@ -30,10 +30,10 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 	if err != nil {
 		log.Println("Error opening file: " + err.Error())
 	}
-	expectedBlock := 0
-	gaplessToBlock := uint(0)
+	expectedBlock := int64(0)
+	gaplessToBlock := int64(0)
 	lastRetransmitTime := time.Now()
-	var retransmitBlocks []int
+	var retransmitBlocks []int64
 
 	buf := make([]byte, t.Config().BlockSize+500)
 	dataConn.SetReadDeadline(time.Now().Add(readTimeout))
@@ -47,13 +47,13 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 
 				//if retransmit blocks hits 0, but we know there are still missing blocks
 				//use the gaplessToBlock value to fill in the blanks
-				if len(retransmitBlocks) == 0 && float64(bs.Count()) < numBlocks {
-					for i := gaplessToBlock + 1; float64(i) < numBlocks; i++ {
-						retransmitBlocks = insertRetransmitBlock(retransmitBlocks, int(i))
+				if len(retransmitBlocks) == 0 && int64(bs.Count()) < numBlocks {
+					for i := gaplessToBlock + 1; i < numBlocks; i++ {
+						retransmitBlocks = insertRetransmitBlock(retransmitBlocks, i)
 					}
 				}
 				requestRetransmit(retransmitBlocks, bs, controlConn, e)
-				retransmitBlocks = []int{}
+				retransmitBlocks = []int64{}
 				dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 				continue
 			} else {
@@ -78,7 +78,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 			}
 		}
 		//if we have received all the blocks, we are done!
-		if float64(bs.Count()) == numBlocks {
+		if int64(bs.Count()) == numBlocks {
 			pkt := message.Packet{Type: message.DONE}
 			data, _ := e.Encode(&pkt)
 			controlConn.Write(data)
@@ -91,13 +91,13 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		}
 		//keeps track of the point up to where we have received all the blocks
 		//with no missing blocks in between
-		for bs.Test(gaplessToBlock+1) && float64(gaplessToBlock) < numBlocks {
+		for bs.Test(uint(gaplessToBlock+1)) && gaplessToBlock < numBlocks {
 			gaplessToBlock++
 		}
 		//finally, if we meet our retransmit criteria, send message to server
 		if shouldRetransmit(bs.Count(), lastRetransmitTime) {
 			requestRetransmit(retransmitBlocks, bs, controlConn, e)
-			retransmitBlocks = []int{}
+			retransmitBlocks = []int64{}
 			lastRetransmitTime = time.Now()
 		}
 	}
@@ -112,7 +112,7 @@ func shouldRetransmit(numBlocks uint, lastRetransmitTime time.Time) bool {
 	return false
 }
 
-func insertRetransmitBlock(blocks []int, block int) []int {
+func insertRetransmitBlock(blocks []int64, block int64) []int64 {
 	if len(blocks) == 0 {
 		return append(blocks, block)
 	}
@@ -120,7 +120,7 @@ func insertRetransmitBlock(blocks []int, block int) []int {
 	// block is not present in data,
 	// but i is the index where it would be inserted.
 	if !(i < len(blocks) && blocks[i] == block) {
-		newBlocks := make([]int, len(blocks)+1)
+		newBlocks := make([]int64, len(blocks)+1)
 		copy(newBlocks, blocks)
 
 		for j := i; j < len(blocks); j++ {
@@ -133,8 +133,8 @@ func insertRetransmitBlock(blocks []int, block int) []int {
 	return blocks
 }
 
-func requestRetransmit(blocks []int, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder) {
-	var missingBlocks []int
+func requestRetransmit(blocks []int64, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder) {
+	var missingBlocks []int64
 	for _, b := range blocks {
 		if !bs.Test(uint(b)) {
 			missingBlocks = append(missingBlocks, b)

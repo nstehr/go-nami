@@ -32,26 +32,28 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 	blockSize := t.Config().BlockSize
 	transferRate := float64(t.Config().TransferRate) * 0.125 //get the transfer in bytes per second
 
-	blockRate := math.Floor(transferRate / float64(blockSize)) //how many blocks we can send in one second
-	numBlocks := math.Ceil(float64(filesize) / float64(blockSize))
+	blockRate := int64(math.Floor(transferRate / float64(blockSize))) //how many blocks we can send in one second
+	numBlocks := int64(math.Ceil(float64(filesize) / float64(blockSize)))
 
-	//we can send more blocks per second than we need send
-	//so only send the number of blocks
-	if blockRate > numBlocks {
-		blockRate = numBlocks
-	}
-	blockIndex := 0
+	blockIndex := int64(0)
 
 	conn, err := net.DialUDP("udp", nil, listeningAddr)
 	ticker := time.NewTicker(time.Second * 1)
 	for {
 		select {
 		case <-ticker.C:
-			for i := float64(0); i < blockRate; i++ {
+			//we can send more blocks per second than we need send
+			//so only send the number of blocks
+			rate := blockRate
+			blocksLeft := numBlocks - blockIndex
+			if rate > blocksLeft {
+				rate = blocksLeft
+			}
+			for i := int64(0); i < rate; i++ {
 				sendDataPkt(file, blockSize, blockIndex, conn, e, message.ORIGINAL)
 				blockIndex++
 			}
-			if blockIndex == int(numBlocks) {
+			if blockIndex == numBlocks {
 				ticker.Stop()
 			}
 		case msg := <-t.controlCh:
@@ -59,12 +61,15 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 				return
 			}
 			if msg.msgType == message.RETRANSMIT {
+
 				rt := msg.payload.(message.Retransmit)
 				blocks := rt.BlockNums
-				for _, block := range blocks {
+				for i, block := range blocks {
 					sendDataPkt(file, blockSize, block, conn, e, message.RETRANSMITTED)
+					if i > 0 && int64(i)%blockRate == 0 {
+						time.Sleep(time.Second * 1)
+					}
 				}
-
 			}
 			if msg.msgType == message.ERROR_RATE {
 
@@ -73,9 +78,9 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 	}
 }
 
-func sendDataPkt(file *os.File, blockSize int64, blockIndex int, conn net.Conn, e encoder.Encoder, blockType message.BlockType) {
+func sendDataPkt(file *os.File, blockSize int64, blockIndex int64, conn net.Conn, e encoder.Encoder, blockType message.BlockType) {
 	bytes := make([]byte, blockSize)
-	numBytes, _ := file.ReadAt(bytes, int64(blockIndex)*blockSize)
+	numBytes, _ := file.ReadAt(bytes, blockIndex*blockSize)
 	//if we are at the end of the file, chances are the bytes left will
 	//be less than blockSize, so adjust
 	if int64(numBytes) < blockSize {
