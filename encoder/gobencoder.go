@@ -12,6 +12,8 @@ type GobEncoder struct{}
 
 func NewGobEncoder() GobEncoder {
 	gob.Register(transfer.Config{})
+	gob.Register(message.Block{})
+	gob.Register(message.Retransmit{})
 	return GobEncoder{}
 }
 

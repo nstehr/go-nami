@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	Secret   = "kitten"
-	Revision = 20061025
+	Secret     = "kitten"
+	Revision   = 20061025
+	readBuffer = 100000
 )
 
 func XORSecret(b []byte, secret string) []byte {
@@ -49,7 +50,7 @@ func ReadPackets(conn net.Conn, e encoder.Encoder, transfer transfer.Transfer, i
 	inTransmission := true
 	stateMachine := statemachine.NewStateMachine(initialState)
 	for inTransmission {
-		data := make([]byte, 8000)
+		data := make([]byte, readBuffer)
 		// Read the incoming connection into the buffer.
 		numBytes, err := conn.Read(data)
 		if err != nil {

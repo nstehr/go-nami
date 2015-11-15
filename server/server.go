@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/nstehr/go-nami/encoder"
+	"github.com/nstehr/go-nami/message"
 	"github.com/nstehr/go-nami/shared"
 	"github.com/nstehr/go-nami/shared/transfer"
 )
@@ -23,6 +24,14 @@ type ServerTransfer struct {
 	progressCh     chan transfer.Progress
 	filename       string
 	localDirectory string
+	controlCh      chan controlMsg
+}
+
+type controlMsgType int
+
+type controlMsg struct {
+	msgType message.MessageType
+	payload interface{}
 }
 
 func (st *ServerTransfer) Config() transfer.Config {

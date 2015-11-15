@@ -83,7 +83,6 @@ func onFilenameValidationState(pkt *message.Packet, e encoder.Encoder, conn net.
 
 func sendTransferConfigState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
 	config := t.Config()
-	config.TransferRate = 32
 	outPkt := message.Packet{Type: message.GET_FILE, Payload: config}
 	_, err := shared.SendPacket(&outPkt, conn, e)
 	if err != nil {
@@ -116,6 +115,11 @@ func acceptFileSizeState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, 
 		log.Println("Error sending GET_FILE packet: " + err.Error())
 		return nil
 	}
+	log.Println("Starting download")
+	go handleDownload(e, conn, serverConn, t.(*ClientTransfer))
+	return transferDoneState
+}
+func transferDoneState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
 	return nil
 }
 

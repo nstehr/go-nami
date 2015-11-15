@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/md5"
 	"crypto/rand"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -132,6 +133,7 @@ func receiveConfigState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		log.Println("Error reading file: " + err.Error())
+		return nil
 	}
 	filesize := info.Size()
 	outPkt := &message.Packet{Type: message.GET_FILE, Payload: filesize}
@@ -142,7 +144,38 @@ func receiveConfigState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t
 	}
 	//save the config
 	t.(*ServerTransfer).config = config
-	return nil
+	log.Println("Transfer config received")
+
+	return acceptListeningPortState
+}
+
+func acceptListeningPortState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
+	port := pkt.Payload.(int)
+	ip := conn.RemoteAddr().(*net.TCPAddr).IP.String()
+	client := fmt.Sprintf("%s:%d", ip, port)
+	t.(*ServerTransfer).controlCh = make(chan controlMsg)
+	go sendFile(client, e, t.(*ServerTransfer))
+	return transferingState
+}
+
+func transferingState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
+
+	switch pkt.Type {
+	case message.RETRANSMIT:
+		rt, ok := pkt.Payload.(message.Retransmit)
+		if !ok {
+			log.Println("Incorrect payload type")
+			return nil
+		}
+		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.RETRANSMIT, payload: rt}
+		return transferingState
+	case message.DONE:
+		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.DONE}
+		data, _ := e.Encode(pkt)
+		conn.Write(data)
+		return nil
+	}
+	return transferingState
 }
 
 func generateRandomBytes() []byte {

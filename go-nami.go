@@ -15,9 +15,9 @@ func main() {
 	t := flag.String("type", "server", "")
 	flag.Parse()
 	if *t == "client" {
-		config := transfer.Config{}
+		config := transfer.NewConfig()
 		c := client.NewClient("Downloads", config, e)
-		statusCh := c.GetFile("foo.txt", ":46224")
+		statusCh := c.GetFile("test.m4a", ":46224")
 		for status := range statusCh {
 			log.Println(status)
 		}

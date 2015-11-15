@@ -8,6 +8,7 @@ const (
 	GET_FILE
 	DATA
 	RETRANSMIT
+	ERROR_RATE
 	DONE
 )
 

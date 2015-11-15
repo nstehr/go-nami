@@ -38,7 +38,7 @@ func (ct *ClientTransfer) Filename() string {
 }
 
 func (ct *ClientTransfer) LocalDirectory() string {
-	return ct.LocalDirectory()
+	return ct.localDirectory
 }
 
 func (ct *ClientTransfer) FullPath() string {
