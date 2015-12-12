@@ -169,6 +169,13 @@ func transferingState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t t
 		}
 		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.RETRANSMIT, payload: rt}
 		return transferingState
+	case message.ERROR_RATE:
+		errorRate, ok := pkt.Payload.(float64)
+		if !ok {
+			log.Println("Incorrect payload type")
+			return nil
+		}
+		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.ERROR_RATE, payload: errorRate}
 	case message.DONE:
 		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.DONE}
 		data, _ := e.Encode(pkt)

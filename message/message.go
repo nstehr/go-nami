@@ -25,12 +25,12 @@ const (
 )
 
 type Block struct {
-	Number int64
+	Number int
 	Data   []byte
 	Type   BlockType
 }
 
 type Retransmit struct {
 	IsRestart bool
-	BlockNums []int64
+	BlockNums []int
 }

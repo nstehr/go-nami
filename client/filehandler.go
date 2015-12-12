@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/nstehr/go-nami/encoder"
@@ -21,8 +22,10 @@ const (
 )
 
 func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *ClientTransfer) {
-	numBlocks := int64(math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize)))
-	log.Println(numBlocks)
+	var wg sync.WaitGroup
+
+	numBlocks := int(math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize)))
+
 	bs := bitset.New(uint(numBlocks))
 	defer dataConn.Close()
 	fo, err := os.Create(t.FullPath())
@@ -30,30 +33,43 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 	if err != nil {
 		log.Println("Error opening file: " + err.Error())
 	}
-	expectedBlock := int64(0)
-	gaplessToBlock := int64(0)
+	fileWriter := make(chan message.Block)
+	defer close(fileWriter)
+
+	//handles writing the blocks to the file
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for block := range fileWriter {
+			writeData(block.Data, block.Number*t.Config().BlockSize, fo)
+		}
+	}()
+
+	expectedBlock := 0
+	gaplessToBlock := 0
+	missedBlocks := 0
+	receivedBlocks := 0
+
 	lastRetransmitTime := time.Now()
-	var retransmitBlocks []int64
+	var retransmitBlocks []int
 
 	buf := make([]byte, t.Config().BlockSize+500)
 	dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	for {
 		n, _, err := dataConn.ReadFromUDP(buf)
+		dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 		if err != nil {
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 				//we timedout on a read, but don't have all the data
 				//so send a retransmit and try again
-
-				//if retransmit blocks hits 0, but we know there are still missing blocks
-				//use the gaplessToBlock value to fill in the blanks
-				if len(retransmitBlocks) == 0 && int64(bs.Count()) < numBlocks {
-					for i := gaplessToBlock + 1; i < numBlocks; i++ {
-						retransmitBlocks = insertRetransmitBlock(retransmitBlocks, i)
-					}
+				restart := false
+				if len(retransmitBlocks) <= 0 {
+					retransmitBlocks = insertRetransmitBlock(retransmitBlocks, gaplessToBlock+1)
+					restart = true
 				}
-				requestRetransmit(retransmitBlocks, bs, controlConn, e, t.Config().MaxMissedLength)
-				retransmitBlocks = []int64{}
+				requestRetransmit(retransmitBlocks, bs, controlConn, e, restart)
+				retransmitBlocks = []int{}
 				dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 				continue
 			} else {
@@ -70,18 +86,28 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		//write the block to file and build out the list of blocks
 		//to retransmit
 		block := pkt.Payload.(message.Block)
-		writeData(block.Data, int64(block.Number)*t.Config().BlockSize, fo)
+		//send the block to be written
+		fileWriter <- block
 		bs.Set(uint(block.Number))
+		receivedBlocks++
 		if block.Number > expectedBlock {
-			for i := expectedBlock; i < block.Number; i++ {
-				retransmitBlocks = insertRetransmitBlock(retransmitBlocks, i)
+			if (len(retransmitBlocks) + (block.Number - expectedBlock)) > t.Config().MaxMissedLength {
+				requestRetransmit(retransmitBlocks, bs, controlConn, e, true)
+				retransmitBlocks = []int{}
+			} else {
+				for i := expectedBlock; i < block.Number; i++ {
+					retransmitBlocks = insertRetransmitBlock(retransmitBlocks, i)
+				}
 			}
+			missedBlocks = missedBlocks + (block.Number - expectedBlock)
 		}
 		//if we have received all the blocks, we are done!
-		if int64(bs.Count()) == numBlocks {
+		if int(bs.Count()) == numBlocks {
 			pkt := message.Packet{Type: message.DONE}
 			data, _ := e.Encode(&pkt)
 			controlConn.Write(data)
+			log.Println("Done and waiting")
+			wg.Wait()
 			return
 		}
 		//we will be expecting the next block number
@@ -96,9 +122,14 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		}
 		//finally, if we meet our retransmit criteria, send message to server
 		if shouldRetransmit(bs.Count(), lastRetransmitTime) {
-			requestRetransmit(retransmitBlocks, bs, controlConn, e, t.Config().MaxMissedLength)
-			retransmitBlocks = []int64{}
+			//send the error rate
+			sendErrorRate(receivedBlocks, missedBlocks, controlConn, e)
+			//request the retransmit
+			requestRetransmit(retransmitBlocks, bs, controlConn, e, false)
+			retransmitBlocks = []int{}
 			lastRetransmitTime = time.Now()
+			missedBlocks = 0
+			receivedBlocks = 0
 		}
 	}
 }
@@ -112,15 +143,17 @@ func shouldRetransmit(numBlocks uint, lastRetransmitTime time.Time) bool {
 	return false
 }
 
-func insertRetransmitBlock(blocks []int64, block int64) []int64 {
+func insertRetransmitBlock(blocks []int, block int) []int {
 	if len(blocks) == 0 {
-		return append(blocks, block)
+		blocks = append(blocks, block)
+
+		return blocks
 	}
 	i := sort.Search(len(blocks), func(i int) bool { return blocks[i] >= block })
 	// block is not present in data,
 	// but i is the index where it would be inserted.
 	if !(i < len(blocks) && blocks[i] == block) {
-		newBlocks := make([]int64, len(blocks)+1)
+		newBlocks := make([]int, len(blocks)+1)
 		copy(newBlocks, blocks)
 
 		for j := i; j < len(blocks); j++ {
@@ -133,18 +166,21 @@ func insertRetransmitBlock(blocks []int64, block int64) []int64 {
 	return blocks
 }
 
-func requestRetransmit(blocks []int64, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder, maxMissedLength int) {
-	var missingBlocks []int64
-	isRestart := false
-	for _, b := range blocks {
-		if !bs.Test(uint(b)) {
-			missingBlocks = append(missingBlocks, b)
+func requestRetransmit(blocks []int, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder, isRestart bool) {
+	if len(blocks) <= 0 {
+		return
+	}
+	var missingBlocks []int
+	if isRestart {
+		missingBlocks = blocks[0:1]
+	} else {
+		for _, b := range blocks {
+			if !bs.Test(uint(b)) {
+				missingBlocks = append(missingBlocks, b)
+			}
 		}
 	}
-	if len(missingBlocks) > maxMissedLength {
-		isRestart = true
-		missingBlocks = missingBlocks[0:1]
-	}
+
 	payload := message.Retransmit{IsRestart: isRestart, BlockNums: missingBlocks}
 	pkt := message.Packet{Type: message.RETRANSMIT, Payload: payload}
 	_, err := shared.SendPacket(&pkt, conn, e)
@@ -153,8 +189,17 @@ func requestRetransmit(blocks []int64, bs *bitset.BitSet, conn net.Conn, e encod
 	}
 }
 
-func writeData(data []byte, offset int64, fo *os.File) {
-	_, err := fo.WriteAt(data, offset)
+func sendErrorRate(receivedBlocks int, missedBlocks int, conn net.Conn, e encoder.Encoder) {
+	percent := float64(missedBlocks) / float64(missedBlocks+receivedBlocks)
+	pkt := message.Packet{Type: message.ERROR_RATE, Payload: percent}
+	_, err := shared.SendPacket(&pkt, conn, e)
+	if err != nil {
+		log.Println("Error sending error rate: " + err.Error())
+	}
+}
+
+func writeData(data []byte, offset int, fo *os.File) {
+	_, err := fo.WriteAt(data, int64(offset))
 	if err != nil {
 		log.Println("Error writing to file: " + err.Error())
 	}
