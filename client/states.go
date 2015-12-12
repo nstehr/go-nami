@@ -13,7 +13,7 @@ import (
 	"github.com/nstehr/go-nami/statemachine"
 )
 
-func onVersionConfirmedState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, transfer transfer.Transfer) statemachine.StateFn {
+func onVersionConfirmedState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
 	if pkt.Type != message.AUTH {
 		log.Println("Expecting AUTH, did not receive it")
 		return nil
@@ -23,7 +23,7 @@ func onVersionConfirmedState(pkt *message.Packet, e encoder.Encoder, conn net.Co
 		log.Println("Incorrect payload type")
 		return nil
 	}
-	log.Println("Version confirmed, generating AUTH token")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Version correct, Authenticating", Percentage: 0.25})
 	x := shared.XORSecret(b, shared.Secret)
 	//and then MD5 hash it
 	hasher := md5.New()
@@ -48,8 +48,9 @@ func onAuthenticatedState(pkt *message.Packet, e encoder.Encoder, conn net.Conn,
 	}
 	if authenticated[0] != 000 {
 		log.Println("Authentication failed")
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: "Authentication failed.", Percentage: 0})
 	}
-	log.Println("Authentication successful")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Authenticated. Validating file with server", Percentage: 0.50})
 	return sendFilenameState(pkt, e, conn, t)
 }
 
@@ -76,8 +77,10 @@ func onFilenameValidationState(pkt *message.Packet, e encoder.Encoder, conn net.
 	}
 	if payload[0] != 000 {
 		log.Println("problem accessing file on server")
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: "Problem accessing file on server", Percentage: 0})
 		return nil
 	}
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "File exists, sending configuration", Percentage: 0.75})
 	return sendTransferConfigState(pkt, e, conn, t)
 }
 
@@ -105,7 +108,9 @@ func acceptFileSizeState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, 
 	}
 	serverConn, err := getUDPServerConn()
 	if err != nil {
-		log.Println("Error starting listening connection: " + err.Error())
+		errMsg := "Error starting listening connection: " + err.Error()
+		log.Println(errMsg)
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: errMsg, Percentage: 0})
 		return nil
 	}
 	listeningPort := serverConn.LocalAddr().(*net.UDPAddr).Port
@@ -115,7 +120,7 @@ func acceptFileSizeState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, 
 		log.Println("Error sending GET_FILE packet: " + err.Error())
 		return nil
 	}
-	log.Println("Starting download")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Handshaking complete. Starting Download", Percentage: 1})
 	go handleDownload(e, conn, serverConn, t.(*ClientTransfer))
 	return transferDoneState
 }

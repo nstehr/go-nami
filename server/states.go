@@ -18,6 +18,7 @@ import (
 
 func onVersionState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t transfer.Transfer) statemachine.StateFn {
 	log.Println("Comparing revisions")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Comparing versions", Percentage: 0.25})
 	if pkt.Type != message.REV {
 		log.Println("Expecting REV, did not receive it")
 		return nil
@@ -30,6 +31,7 @@ func onVersionState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t tra
 
 	if revision != shared.Revision {
 		log.Println("protocol revisions do not match")
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: "Versions do not match", Percentage: 0})
 		return nil
 	}
 	return onBeginAuthState(pkt, e, conn, t)
@@ -71,6 +73,7 @@ func authenticateClientState(pkt *message.Packet, e encoder.Encoder, conn net.Co
 	hashed := hasher.Sum(xORd)
 	if len(hashed) != len(b) {
 		log.Println("Authentication failed")
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: "Authentication failed", Percentage: 0})
 		return nil
 	}
 	//compare the client bytes to our bytes to
@@ -78,10 +81,11 @@ func authenticateClientState(pkt *message.Packet, e encoder.Encoder, conn net.Co
 	for i := 0; i < len(hashed); i++ {
 		if hashed[i] != b[i] {
 			log.Println("Authentication failed")
+			t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: "Authentication failed", Percentage: 0})
 			return nil
 		}
 	}
-	log.Println("Authentication successful")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Authentication Successful", Percentage: 0.50})
 	outPkt := &message.Packet{Type: message.AUTH, Payload: []byte{000}}
 	_, err := shared.SendPacket(outPkt, conn, e)
 	if err != nil {
@@ -104,7 +108,9 @@ func validateFilenameState(pkt *message.Packet, e encoder.Encoder, conn net.Conn
 	payload := []byte{000}
 	fullPath := filepath.Join(t.LocalDirectory(), filename)
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		log.Println("no such file or directory: " + fullPath)
+		msg := "no such file or directory: " + fullPath
+		log.Println(msg)
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: msg, Percentage: 0})
 		payload = []byte{001}
 	}
 	outPkt := &message.Packet{Type: message.GET_FILE, Payload: payload}
@@ -115,6 +121,7 @@ func validateFilenameState(pkt *message.Packet, e encoder.Encoder, conn net.Conn
 	}
 	//set the filename into the ServerTransfer
 	t.(*ServerTransfer).filename = filename
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "File found", Percentage: 0.75})
 	return receiveConfigState
 }
 
@@ -144,7 +151,7 @@ func receiveConfigState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t
 	}
 	//save the config
 	t.(*ServerTransfer).config = config
-	log.Println("Transfer config received")
+	t.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Configuration received. Handshaking complete", Percentage: 1})
 
 	return acceptListeningPortState
 }
@@ -155,6 +162,7 @@ func acceptListeningPortState(pkt *message.Packet, e encoder.Encoder, conn net.C
 	client := fmt.Sprintf("%s:%d", ip, port)
 	t.(*ServerTransfer).controlCh = make(chan controlMsg)
 	go sendFile(client, e, t.(*ServerTransfer))
+	t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Starting transfer", Percentage: 0})
 	return transferingState
 }
 
@@ -180,6 +188,7 @@ func transferingState(pkt *message.Packet, e encoder.Encoder, conn net.Conn, t t
 		t.(*ServerTransfer).controlCh <- controlMsg{msgType: message.DONE}
 		data, _ := e.Encode(pkt)
 		conn.Write(data)
+		t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Transfer Complete", Percentage: 1})
 		return nil
 	}
 	return transferingState

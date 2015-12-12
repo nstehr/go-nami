@@ -63,12 +63,15 @@ func getFile(filename string, localDirectory string, serverAddr string, e encode
 	defer close(ch)
 	conn, err := net.Dial("tcp", serverAddr)
 	if err != nil {
-		log.Println("Error establishing connection: " + err.Error())
+		errMsg := "Error establishing connection: " + err.Error()
+		log.Println(errMsg)
+		ch <- transfer.Progress{Type: transfer.ERROR, Message: errMsg, Percentage: 0}
 		return
 	}
 	defer conn.Close()
 	//start everything off with sending our version number
 	pkt := message.Packet{Type: message.REV, Payload: shared.Revision}
+	ch <- transfer.Progress{Type: transfer.HANDSHAKING, Message: "Sending client version", Percentage: 0}
 	b, _ := e.Encode(&pkt)
 	conn.Write(b)
 	ct := NewClientTransfer(filename, localDirectory, config, ch)

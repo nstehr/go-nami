@@ -100,6 +100,7 @@ func (s *Server) handleRequest(conn net.Conn, ch chan transfer.Progress) {
 	defer conn.Close()
 	defer close(ch)
 	st := NewServerTransfer(ch, s.localDirectory)
+	st.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Accepted connection from: " + conn.RemoteAddr().String(), Percentage: 0})
 	shared.ReadPackets(conn, s.encoder, st, onVersionState)
 	log.Println("Closing connection")
 }

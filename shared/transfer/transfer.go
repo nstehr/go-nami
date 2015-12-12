@@ -1,15 +1,27 @@
 package transfer
 
-type Progress string
+type ProgressType int
 
 const (
-	defaultTransferRate    = 750000 //bits per second
-	defaultBlockSize       = 1024   //in bytes
-	defaultErrorRate       = 7500   //threshhold error rate (% x 1000)
-	defaultSlowerNum       = 25     //numerator in the slowdown factor
-	defaultSlowerDen       = 24     //denominator in the slowdown factor
-	defaultFasterNum       = 5      //numerator in the speedup factor
-	defaultFasterDen       = 6      //denominator in the speedup factor
+	HANDSHAKING ProgressType = iota
+	TRANSFERRING
+	ERROR
+)
+
+type Progress struct {
+	Message    string
+	Percentage float64
+	Type       ProgressType
+}
+
+const (
+	defaultTransferRate    = 7500000 //bits per second
+	defaultBlockSize       = 1024    //in bytes
+	defaultErrorRate       = 7500    //threshhold error rate (% x 1000)
+	defaultSlowerNum       = 25      //numerator in the slowdown factor
+	defaultSlowerDen       = 24      //denominator in the slowdown factor
+	defaultFasterNum       = 5       //numerator in the speedup factor
+	defaultFasterDen       = 6       //denominator in the speedup factor
 	defaultMaxMissedLength = 4096
 )
 

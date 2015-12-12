@@ -132,7 +132,7 @@ func updateSendRate(errorRate float64, increaseCount *int, config transfer.Confi
 	if errorRate > targetErrorRate {
 		percent := float64(config.SlowerNum) / float64(config.SlowerDen)
 		blockRateCh <- percent
-		log.Println("Decreasing....")
+		log.Println("Decreasing rate")
 	}
 	if errorRate < increaseRate {
 		*increaseCount++
@@ -140,7 +140,7 @@ func updateSendRate(errorRate float64, increaseCount *int, config transfer.Confi
 			percent := float64(config.FasterNum) / float64(config.FasterDen)
 			blockRateCh <- percent
 			*increaseCount = 0
-			log.Println("Increasing....")
+			log.Println("Increasing rate")
 		}
 	}
 

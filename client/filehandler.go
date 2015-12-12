@@ -12,6 +12,7 @@ import (
 	"github.com/nstehr/go-nami/encoder"
 	"github.com/nstehr/go-nami/message"
 	"github.com/nstehr/go-nami/shared"
+	"github.com/nstehr/go-nami/shared/transfer"
 	"github.com/willf/bitset"
 )
 
@@ -31,7 +32,9 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 	fo, err := os.Create(t.FullPath())
 	defer fo.Close()
 	if err != nil {
-		log.Println("Error opening file: " + err.Error())
+		errMsg := "Error opening file: " + err.Error()
+		log.Println(errMsg)
+		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: errMsg, Percentage: 0})
 	}
 	fileWriter := make(chan message.Block)
 	defer close(fileWriter)
@@ -106,7 +109,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 			pkt := message.Packet{Type: message.DONE}
 			data, _ := e.Encode(&pkt)
 			controlConn.Write(data)
-			log.Println("Done and waiting")
+			t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Finalizing file", Percentage: 1})
 			wg.Wait()
 			return
 		}
@@ -120,7 +123,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		for bs.Test(uint(gaplessToBlock+1)) && gaplessToBlock < numBlocks {
 			gaplessToBlock++
 		}
-		//finally, if we meet our retransmit criteria, send message to server
+		//if we meet our retransmit criteria, send message to server
 		if shouldRetransmit(bs.Count(), lastRetransmitTime) {
 			//send the error rate
 			sendErrorRate(receivedBlocks, missedBlocks, controlConn, e)
@@ -131,6 +134,8 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 			missedBlocks = 0
 			receivedBlocks = 0
 		}
+		//finally, update progress
+		t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Downloading...", Percentage: float64(bs.Count()) / float64(numBlocks)})
 	}
 }
 
