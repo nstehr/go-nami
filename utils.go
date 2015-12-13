@@ -1,22 +1,17 @@
-package shared
+package gonami
 
 import (
 	"log"
 	"net"
-
-	"github.com/nstehr/go-nami/encoder"
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared/transfer"
-	"github.com/nstehr/go-nami/statemachine"
 )
 
 const (
-	Secret     = "kitten"
-	Revision   = 20061025
+	secret     = "kitten"
+	revision   = 20061025
 	readBuffer = 100000
 )
 
-func XORSecret(b []byte, secret string) []byte {
+func xORSecret(b []byte, secret string) []byte {
 	var n int
 	if len(secret) < len(b) {
 		n = len(secret)
@@ -31,7 +26,7 @@ func XORSecret(b []byte, secret string) []byte {
 	return r
 }
 
-func SendPacket(pkt *message.Packet, conn net.Conn, encoder encoder.Encoder) (int, error) {
+func sendPacket(pkt *Packet, conn net.Conn, encoder Encoder) (int, error) {
 
 	b, err := encoder.Encode(pkt)
 
@@ -46,9 +41,9 @@ func SendPacket(pkt *message.Packet, conn net.Conn, encoder encoder.Encoder) (in
 	return numBytes, nil
 }
 
-func ReadPackets(conn net.Conn, e encoder.Encoder, transfer transfer.Transfer, initialState statemachine.StateFn) {
+func readPackets(conn net.Conn, e Encoder, transfer Transfer, initialState stateFn) {
 	inTransmission := true
-	stateMachine := statemachine.NewStateMachine(initialState)
+	stateMachine := newStateMachine(initialState)
 	for inTransmission {
 		data := make([]byte, readBuffer)
 		// Read the incoming connection into the buffer.
@@ -62,6 +57,6 @@ func ReadPackets(conn net.Conn, e encoder.Encoder, transfer transfer.Transfer, i
 			log.Println("Error decoding bytes: " + err.Error())
 			return
 		}
-		inTransmission = stateMachine.Transition(packet, e, conn, transfer)
+		inTransmission = stateMachine.transition(packet, e, conn, transfer)
 	}
 }

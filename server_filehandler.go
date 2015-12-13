@@ -1,4 +1,4 @@
-package server
+package gonami
 
 import (
 	"log"
@@ -7,14 +7,9 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/nstehr/go-nami/encoder"
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared"
-	"github.com/nstehr/go-nami/shared/transfer"
 )
 
-func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
+func sendFile(client string, e Encoder, t *ServerTransfer) {
 	listeningAddr, err := net.ResolveUDPAddr("udp", client)
 	if err != nil {
 		log.Println("Error resolving: " + client)
@@ -39,7 +34,7 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 
 	conn, err := net.DialUDP("udp", nil, listeningAddr)
 
-	sendPacketCh := make(chan *message.Packet)
+	sendPacketCh := make(chan *Packet)
 	blockRateCh := make(chan float64)
 	doneCh := make(chan bool)
 	canStopRetransmit := make(chan chan bool)
@@ -56,7 +51,7 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 	//send the inital set of packets
 	go func() {
 		for i := 0; i < numBlocks; i++ {
-			sendDataPkt(file, blockSize, i, sendPacketCh, message.ORIGINAL)
+			sendDataPkt(file, blockSize, i, sendPacketCh, ORIGINAL)
 		}
 	}()
 	//listen for commands messages
@@ -66,14 +61,14 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 	for {
 		select {
 		case msg := <-t.controlCh:
-			if msg.msgType == message.DONE {
+			if msg.msgType == DONE {
 				doneCh <- true
 				canStop = true
 				wg.Wait()
 				return
 			}
-			if msg.msgType == message.RETRANSMIT {
-				rt := msg.payload.(message.Retransmit)
+			if msg.msgType == RETRANSMIT {
+				rt := msg.payload.(Retransmit)
 				blocks := rt.BlockNums
 				wg.Add(1)
 				go func() {
@@ -87,7 +82,7 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 							if canStopSendingPackets(canStopResponseCh, canStopRetransmit) {
 								return
 							}
-							sendDataPkt(file, blockSize, block, sendPacketCh, message.RETRANSMITTED)
+							sendDataPkt(file, blockSize, block, sendPacketCh, RETRANSMITTED)
 						}
 
 					} else {
@@ -96,12 +91,12 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 							if canStopSendingPackets(canStopResponseCh, canStopRetransmit) {
 								return
 							}
-							sendDataPkt(file, blockSize, i, sendPacketCh, message.ORIGINAL)
+							sendDataPkt(file, blockSize, i, sendPacketCh, ORIGINAL)
 						}
 					}
 				}()
 			}
-			if msg.msgType == message.ERROR_RATE {
+			if msg.msgType == ERROR_RATE {
 				errorRate := msg.payload.(float64)
 				updateSendRate(errorRate, &increaseCount, t.Config(), blockRateCh)
 			}
@@ -112,7 +107,7 @@ func sendFile(client string, e encoder.Encoder, t *ServerTransfer) {
 
 }
 
-func sendDataPkt(file *os.File, blockSize int, blockIndex int, packetCh chan *message.Packet, blockType message.BlockType) {
+func sendDataPkt(file *os.File, blockSize int, blockIndex int, packetCh chan *Packet, blockType BlockType) {
 	bytes := make([]byte, blockSize)
 	numBytes, _ := file.ReadAt(bytes, int64(blockIndex*blockSize))
 	//if we are at the end of the file, chances are the bytes left will
@@ -120,12 +115,12 @@ func sendDataPkt(file *os.File, blockSize int, blockIndex int, packetCh chan *me
 	if numBytes < blockSize {
 		bytes = bytes[0:numBytes]
 	}
-	block := message.Block{Number: blockIndex, Data: bytes, Type: blockType}
-	outPkt := &message.Packet{Type: message.DATA, Payload: block}
+	block := Block{Number: blockIndex, Data: bytes, Type: blockType}
+	outPkt := &Packet{Type: DATA, Payload: block}
 	packetCh <- outPkt
 }
 
-func updateSendRate(errorRate float64, increaseCount *int, config transfer.Config, blockRateCh chan float64) {
+func updateSendRate(errorRate float64, increaseCount *int, config Config, blockRateCh chan float64) {
 	targetErrorRate := float64(config.ErrorRate) / float64(10000)
 	increaseRate := 0.25
 	consecutiveIncrease := 15
@@ -152,7 +147,7 @@ func canStopSendingPackets(canStopResponseCh chan bool, canStopRetransmit chan c
 	return canStopSending
 }
 
-func packetSender(initialBlockRate int, conn net.Conn, e encoder.Encoder, packetCh chan *message.Packet, blockRateCh chan float64, doneCh chan bool) {
+func packetSender(initialBlockRate int, conn net.Conn, e Encoder, packetCh chan *Packet, blockRateCh chan float64, doneCh chan bool) {
 	blockRate := initialBlockRate
 	rate := time.Second / time.Duration(blockRate)
 	throttle := time.NewTicker(rate)
@@ -161,7 +156,7 @@ func packetSender(initialBlockRate int, conn net.Conn, e encoder.Encoder, packet
 		case packet := <-packetCh:
 			if packet != nil {
 				<-throttle.C
-				_, err := shared.SendPacket(packet, conn, e)
+				_, err := sendPacket(packet, conn, e)
 				if err != nil {
 					log.Println("Error sending packet: " + err.Error())
 				}

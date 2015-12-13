@@ -1,4 +1,4 @@
-package client
+package gonami
 
 import (
 	"log"
@@ -9,10 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nstehr/go-nami/encoder"
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared"
-	"github.com/nstehr/go-nami/shared/transfer"
 	"github.com/willf/bitset"
 )
 
@@ -22,7 +18,7 @@ const (
 	readTimeout         = 2 * time.Second
 )
 
-func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *ClientTransfer) {
+func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *ClientTransfer) {
 	var wg sync.WaitGroup
 
 	numBlocks := int(math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize)))
@@ -34,9 +30,9 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 	if err != nil {
 		errMsg := "Error opening file: " + err.Error()
 		log.Println(errMsg)
-		t.UpdateProgress(transfer.Progress{Type: transfer.ERROR, Message: errMsg, Percentage: 0})
+		t.UpdateProgress(Progress{Type: ERROR, Message: errMsg, Percentage: 0})
 	}
-	fileWriter := make(chan message.Block)
+	fileWriter := make(chan Block)
 	defer close(fileWriter)
 
 	//handles writing the blocks to the file
@@ -88,7 +84,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		}
 		//write the block to file and build out the list of blocks
 		//to retransmit
-		block := pkt.Payload.(message.Block)
+		block := pkt.Payload.(Block)
 		//send the block to be written
 		fileWriter <- block
 		bs.Set(uint(block.Number))
@@ -106,16 +102,16 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 		}
 		//if we have received all the blocks, we are done!
 		if int(bs.Count()) == numBlocks {
-			pkt := message.Packet{Type: message.DONE}
+			pkt := Packet{Type: DONE}
 			data, _ := e.Encode(&pkt)
 			controlConn.Write(data)
-			t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Finalizing file", Percentage: 1})
+			t.UpdateProgress(Progress{Type: TRANSFERRING, Message: "Finalizing file", Percentage: 1})
 			wg.Wait()
 			return
 		}
 		//we will be expecting the next block number
 		//in case of restart: these resent blocks are labeled original as well
-		if block.Type == message.ORIGINAL {
+		if block.Type == ORIGINAL {
 			expectedBlock = block.Number + 1
 		}
 		//keeps track of the point up to where we have received all the blocks
@@ -135,7 +131,7 @@ func handleDownload(e encoder.Encoder, controlConn net.Conn, dataConn *net.UDPCo
 			receivedBlocks = 0
 		}
 		//finally, update progress
-		t.UpdateProgress(transfer.Progress{Type: transfer.TRANSFERRING, Message: "Downloading...", Percentage: float64(bs.Count()) / float64(numBlocks)})
+		t.UpdateProgress(Progress{Type: TRANSFERRING, Message: "Downloading...", Percentage: float64(bs.Count()) / float64(numBlocks)})
 	}
 }
 
@@ -171,7 +167,7 @@ func insertRetransmitBlock(blocks []int, block int) []int {
 	return blocks
 }
 
-func requestRetransmit(blocks []int, bs *bitset.BitSet, conn net.Conn, e encoder.Encoder, isRestart bool) {
+func requestRetransmit(blocks []int, bs *bitset.BitSet, conn net.Conn, e Encoder, isRestart bool) {
 	if len(blocks) <= 0 {
 		return
 	}
@@ -186,18 +182,18 @@ func requestRetransmit(blocks []int, bs *bitset.BitSet, conn net.Conn, e encoder
 		}
 	}
 
-	payload := message.Retransmit{IsRestart: isRestart, BlockNums: missingBlocks}
-	pkt := message.Packet{Type: message.RETRANSMIT, Payload: payload}
-	_, err := shared.SendPacket(&pkt, conn, e)
+	payload := Retransmit{IsRestart: isRestart, BlockNums: missingBlocks}
+	pkt := Packet{Type: RETRANSMIT, Payload: payload}
+	_, err := sendPacket(&pkt, conn, e)
 	if err != nil {
 		log.Println("Error sending retransmit blocks: " + err.Error())
 	}
 }
 
-func sendErrorRate(receivedBlocks int, missedBlocks int, conn net.Conn, e encoder.Encoder) {
+func sendErrorRate(receivedBlocks int, missedBlocks int, conn net.Conn, e Encoder) {
 	percent := float64(missedBlocks) / float64(missedBlocks+receivedBlocks)
-	pkt := message.Packet{Type: message.ERROR_RATE, Payload: percent}
-	_, err := shared.SendPacket(&pkt, conn, e)
+	pkt := Packet{Type: ERROR_RATE, Payload: percent}
+	_, err := sendPacket(&pkt, conn, e)
 	if err != nil {
 		log.Println("Error sending error rate: " + err.Error())
 	}

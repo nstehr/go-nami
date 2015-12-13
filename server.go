@@ -1,27 +1,22 @@
-package server
+package gonami
 
 import (
 	"fmt"
 	"log"
 	"net"
 	"path/filepath"
-
-	"github.com/nstehr/go-nami/encoder"
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared"
-	"github.com/nstehr/go-nami/shared/transfer"
 )
 
 type Server struct {
 	port             int
-	encoder          encoder.Encoder
-	TransfersChannel chan chan transfer.Progress
+	encoder          Encoder
+	TransfersChannel chan chan Progress
 	localDirectory   string
 }
 
 type ServerTransfer struct {
-	config         transfer.Config
-	progressCh     chan transfer.Progress
+	config         Config
+	progressCh     chan Progress
 	filename       string
 	localDirectory string
 	controlCh      chan controlMsg
@@ -30,15 +25,15 @@ type ServerTransfer struct {
 type controlMsgType int
 
 type controlMsg struct {
-	msgType message.MessageType
+	msgType MessageType
 	payload interface{}
 }
 
-func (st *ServerTransfer) Config() transfer.Config {
+func (st *ServerTransfer) Config() Config {
 	return st.config
 }
 
-func (st *ServerTransfer) UpdateProgress(progress transfer.Progress) {
+func (st *ServerTransfer) UpdateProgress(progress Progress) {
 	select {
 	case st.progressCh <- progress:
 		log.Println("Notifying progress listener")
@@ -59,12 +54,12 @@ func (st *ServerTransfer) FullPath() string {
 	return filepath.Join(st.LocalDirectory(), st.Filename())
 }
 
-func NewServerTransfer(progressCh chan transfer.Progress, localDirectory string) *ServerTransfer {
+func newServerTransfer(progressCh chan Progress, localDirectory string) *ServerTransfer {
 	return &ServerTransfer{progressCh: progressCh, localDirectory: localDirectory}
 }
 
-func NewServer(encoder encoder.Encoder, port int, localDirectory string) *Server {
-	tc := make(chan chan transfer.Progress)
+func NewServer(encoder Encoder, port int, localDirectory string) *Server {
+	tc := make(chan chan Progress)
 	return &Server{port: port, encoder: encoder, TransfersChannel: tc, localDirectory: localDirectory}
 }
 
@@ -83,7 +78,7 @@ func (s *Server) StartListening() {
 		}
 		// Handle connections in a new goroutine.
 		log.Println("Incoming connection accepted")
-		ch := make(chan transfer.Progress)
+		ch := make(chan Progress)
 		//non blocking send, in case the server doesn't care about
 		//tracking progress
 		select {
@@ -96,11 +91,11 @@ func (s *Server) StartListening() {
 	}
 }
 
-func (s *Server) handleRequest(conn net.Conn, ch chan transfer.Progress) {
+func (s *Server) handleRequest(conn net.Conn, ch chan Progress) {
 	defer conn.Close()
 	defer close(ch)
-	st := NewServerTransfer(ch, s.localDirectory)
-	st.UpdateProgress(transfer.Progress{Type: transfer.HANDSHAKING, Message: "Accepted connection from: " + conn.RemoteAddr().String(), Percentage: 0})
-	shared.ReadPackets(conn, s.encoder, st, onVersionState)
+	st := newServerTransfer(ch, s.localDirectory)
+	st.UpdateProgress(Progress{Type: HANDSHAKING, Message: "Accepted connection from: " + conn.RemoteAddr().String(), Percentage: 0})
+	readPackets(conn, s.encoder, st, onVersionState)
 	log.Println("Closing connection")
 }

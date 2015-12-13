@@ -1,4 +1,4 @@
-package message
+package gonami
 
 type MessageType int
 

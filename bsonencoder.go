@@ -1,13 +1,10 @@
-package encoder
+package gonami
 
 import (
 	"reflect"
 	"strings"
 
 	"gopkg.in/mgo.v2/bson"
-
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared/transfer"
 )
 
 //a bit hacked together, but seems to be better than the default
@@ -15,7 +12,7 @@ import (
 
 type BsonEncoder struct{}
 
-func (b BsonEncoder) Encode(msg *message.Packet) ([]byte, error) {
+func (b BsonEncoder) Encode(msg *Packet) ([]byte, error) {
 	data, err := bson.Marshal(msg)
 	if err != nil {
 		return nil, err
@@ -23,28 +20,28 @@ func (b BsonEncoder) Encode(msg *message.Packet) ([]byte, error) {
 	return data, nil
 }
 
-func (b BsonEncoder) Decode(data []byte, numBytes int) (*message.Packet, error) {
-	msg := message.Packet{}
+func (b BsonEncoder) Decode(data []byte, numBytes int) (*Packet, error) {
+	msg := Packet{}
 	err := bson.Unmarshal(data, &msg)
 	if err != nil {
 		return nil, err
 	}
 	switch msg.Type {
-	case message.GET_FILE:
+	case GET_FILE:
 		if payload, ok := msg.Payload.(bson.M); ok {
-			c := transfer.Config{}
+			c := Config{}
 			fillStruct(payload, &c)
 			msg.Payload = c
 		}
-	case message.DATA:
+	case DATA:
 		if payload, ok := msg.Payload.(bson.M); ok {
-			b := message.Block{}
+			b := Block{}
 			fillStruct(payload, &b)
 			msg.Payload = b
 		}
-	case message.RETRANSMIT:
+	case RETRANSMIT:
 		if payload, ok := msg.Payload.(bson.M); ok {
-			b := message.Retransmit{}
+			b := Retransmit{}
 			fillStruct(payload, &b)
 			pBlockNums := payload["blocknums"].([]interface{})
 			blockNums := make([]int, len(pBlockNums))

@@ -1,23 +1,20 @@
-package encoder
+package gonami
 
 import (
 	"bytes"
 	"encoding/gob"
-
-	"github.com/nstehr/go-nami/message"
-	"github.com/nstehr/go-nami/shared/transfer"
 )
 
 type GobEncoder struct{}
 
 func NewGobEncoder() GobEncoder {
-	gob.Register(transfer.Config{})
-	gob.Register(message.Block{})
-	gob.Register(message.Retransmit{})
+	gob.Register(Config{})
+	gob.Register(Block{})
+	gob.Register(Retransmit{})
 	return GobEncoder{}
 }
 
-func (g GobEncoder) Encode(msg *message.Packet) ([]byte, error) {
+func (g GobEncoder) Encode(msg *Packet) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(msg); err != nil {
 		return nil, err
@@ -25,8 +22,8 @@ func (g GobEncoder) Encode(msg *message.Packet) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (g GobEncoder) Decode(data []byte, numBytes int) (*message.Packet, error) {
-	msg := message.Packet{}
+func (g GobEncoder) Decode(data []byte, numBytes int) (*Packet, error) {
+	msg := Packet{}
 	if err := gob.NewDecoder(bytes.NewReader(data[:numBytes])).Decode(&msg); err != nil {
 		return nil, err
 	}
