@@ -41,7 +41,7 @@ func sendPacket(pkt *Packet, conn net.Conn, encoder Encoder) (int, error) {
 	return numBytes, nil
 }
 
-func readPackets(conn net.Conn, e Encoder, transfer Transfer, initialState stateFn) {
+func readPackets(conn net.Conn, e Encoder, t transfer, initialState stateFn) {
 	inTransmission := true
 	stateMachine := newStateMachine(initialState)
 	for inTransmission {
@@ -57,6 +57,6 @@ func readPackets(conn net.Conn, e Encoder, transfer Transfer, initialState state
 			log.Println("Error decoding bytes: " + err.Error())
 			return
 		}
-		inTransmission = stateMachine.transition(packet, e, conn, transfer)
+		inTransmission = stateMachine.transition(packet, e, conn, t)
 	}
 }

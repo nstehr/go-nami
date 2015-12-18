@@ -49,10 +49,10 @@ func NewConfig() Config {
 
 }
 
-type Transfer interface {
-	UpdateProgress(Progress)
-	Config() Config
-	Filename() string
-	LocalDirectory() string
-	FullPath() string
+type transfer interface {
+	updateProgress(Progress)
+	config() Config
+	filename() string
+	localDirectory() string
+	fullPath() string
 }

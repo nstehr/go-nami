@@ -14,12 +14,12 @@ type Server struct {
 	localDirectory   string
 }
 
-type ServerTransfer struct {
-	config         Config
-	progressCh     chan Progress
-	filename       string
-	localDirectory string
-	controlCh      chan controlMsg
+type serverTransfer struct {
+	c          Config
+	progressCh chan Progress
+	fn         string
+	ld         string
+	controlCh  chan controlMsg
 }
 
 type controlMsgType int
@@ -29,11 +29,11 @@ type controlMsg struct {
 	payload interface{}
 }
 
-func (st *ServerTransfer) Config() Config {
-	return st.config
+func (st *serverTransfer) config() Config {
+	return st.c
 }
 
-func (st *ServerTransfer) UpdateProgress(progress Progress) {
+func (st *serverTransfer) updateProgress(progress Progress) {
 	select {
 	case st.progressCh <- progress:
 		log.Println("Notifying progress listener")
@@ -42,20 +42,20 @@ func (st *ServerTransfer) UpdateProgress(progress Progress) {
 	}
 }
 
-func (st *ServerTransfer) Filename() string {
-	return st.filename
+func (st *serverTransfer) filename() string {
+	return st.fn
 }
 
-func (st *ServerTransfer) LocalDirectory() string {
-	return st.localDirectory
+func (st *serverTransfer) localDirectory() string {
+	return st.ld
 }
 
-func (st *ServerTransfer) FullPath() string {
-	return filepath.Join(st.LocalDirectory(), st.Filename())
+func (st *serverTransfer) fullPath() string {
+	return filepath.Join(st.localDirectory(), st.filename())
 }
 
-func newServerTransfer(progressCh chan Progress, localDirectory string) *ServerTransfer {
-	return &ServerTransfer{progressCh: progressCh, localDirectory: localDirectory}
+func newServerTransfer(progressCh chan Progress, localDirectory string) *serverTransfer {
+	return &serverTransfer{progressCh: progressCh, ld: localDirectory}
 }
 
 func NewServer(encoder Encoder, port int, localDirectory string) *Server {
@@ -95,7 +95,7 @@ func (s *Server) handleRequest(conn net.Conn, ch chan Progress) {
 	defer conn.Close()
 	defer close(ch)
 	st := newServerTransfer(ch, s.localDirectory)
-	st.UpdateProgress(Progress{Type: HANDSHAKING, Message: "Accepted connection from: " + conn.RemoteAddr().String(), Percentage: 0})
+	st.updateProgress(Progress{Type: HANDSHAKING, Message: "Accepted connection from: " + conn.RemoteAddr().String(), Percentage: 0})
 	readPackets(conn, s.encoder, st, onVersionState)
 	log.Println("Closing connection")
 }

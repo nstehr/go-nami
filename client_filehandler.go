@@ -18,19 +18,19 @@ const (
 	readTimeout         = 2 * time.Second
 )
 
-func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *ClientTransfer) {
+func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *clientTransfer) {
 	var wg sync.WaitGroup
 
-	numBlocks := int(math.Ceil(float64(t.filesize) / float64(t.Config().BlockSize)))
+	numBlocks := int(math.Ceil(float64(t.filesize) / float64(t.config().BlockSize)))
 
 	bs := bitset.New(uint(numBlocks))
 	defer dataConn.Close()
-	fo, err := os.Create(t.FullPath())
+	fo, err := os.Create(t.fullPath())
 	defer fo.Close()
 	if err != nil {
 		errMsg := "Error opening file: " + err.Error()
 		log.Println(errMsg)
-		t.UpdateProgress(Progress{Type: ERROR, Message: errMsg, Percentage: 0})
+		t.updateProgress(Progress{Type: ERROR, Message: errMsg, Percentage: 0})
 	}
 	fileWriter := make(chan Block)
 	defer close(fileWriter)
@@ -40,7 +40,7 @@ func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *C
 	go func() {
 		defer wg.Done()
 		for block := range fileWriter {
-			writeData(block.Data, block.Number*t.Config().BlockSize, fo)
+			writeData(block.Data, block.Number*t.config().BlockSize, fo)
 		}
 	}()
 
@@ -52,7 +52,7 @@ func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *C
 	lastRetransmitTime := time.Now()
 	var retransmitBlocks []int
 
-	buf := make([]byte, t.Config().BlockSize+500)
+	buf := make([]byte, t.config().BlockSize+500)
 	dataConn.SetReadDeadline(time.Now().Add(readTimeout))
 
 	for {
@@ -90,7 +90,7 @@ func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *C
 		bs.Set(uint(block.Number))
 		receivedBlocks++
 		if block.Number > expectedBlock {
-			if (len(retransmitBlocks) + (block.Number - expectedBlock)) > t.Config().MaxMissedLength {
+			if (len(retransmitBlocks) + (block.Number - expectedBlock)) > t.config().MaxMissedLength {
 				requestRetransmit(retransmitBlocks, bs, controlConn, e, true)
 				retransmitBlocks = []int{}
 			} else {
@@ -105,7 +105,7 @@ func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *C
 			pkt := Packet{Type: DONE}
 			data, _ := e.Encode(&pkt)
 			controlConn.Write(data)
-			t.UpdateProgress(Progress{Type: TRANSFERRING, Message: "Finalizing file", Percentage: 1})
+			t.updateProgress(Progress{Type: TRANSFERRING, Message: "Finalizing file", Percentage: 1})
 			wg.Wait()
 			return
 		}
@@ -131,7 +131,7 @@ func handleDownload(e Encoder, controlConn net.Conn, dataConn *net.UDPConn, t *C
 			receivedBlocks = 0
 		}
 		//finally, update progress
-		t.UpdateProgress(Progress{Type: TRANSFERRING, Message: "Downloading...", Percentage: float64(bs.Count()) / float64(numBlocks)})
+		t.updateProgress(Progress{Type: TRANSFERRING, Message: "Downloading...", Percentage: float64(bs.Count()) / float64(numBlocks)})
 	}
 }
 

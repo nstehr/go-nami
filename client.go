@@ -12,36 +12,36 @@ type Client struct {
 	localDirectory string
 }
 
-type ClientTransfer struct {
-	filename       string
-	config         Config
-	progressCh     chan Progress
-	filesize       int64
-	localDirectory string
+type clientTransfer struct {
+	fn         string
+	c          Config
+	progressCh chan Progress
+	filesize   int64
+	ld         string
 }
 
-func (ct *ClientTransfer) Config() Config {
-	return ct.config
+func (ct *clientTransfer) config() Config {
+	return ct.c
 }
 
-func (ct *ClientTransfer) UpdateProgress(progress Progress) {
+func (ct *clientTransfer) updateProgress(progress Progress) {
 	ct.progressCh <- progress
 }
 
-func (ct *ClientTransfer) Filename() string {
-	return ct.filename
+func (ct *clientTransfer) filename() string {
+	return ct.fn
 }
 
-func (ct *ClientTransfer) LocalDirectory() string {
-	return ct.localDirectory
+func (ct *clientTransfer) localDirectory() string {
+	return ct.ld
 }
 
-func (ct *ClientTransfer) FullPath() string {
-	return filepath.Join(ct.LocalDirectory(), ct.Filename())
+func (ct *clientTransfer) fullPath() string {
+	return filepath.Join(ct.localDirectory(), ct.filename())
 }
 
-func NewClientTransfer(filename string, localDirectory string, config Config, progressCh chan Progress) *ClientTransfer {
-	return &ClientTransfer{filename: filename, localDirectory: localDirectory, config: config, progressCh: progressCh}
+func newClientTransfer(filename string, localDirectory string, c Config, progressCh chan Progress) *clientTransfer {
+	return &clientTransfer{fn: filename, ld: localDirectory, c: c, progressCh: progressCh}
 }
 
 func NewClient(localDirectory string, config Config, encoder Encoder) *Client {
@@ -69,6 +69,6 @@ func getFile(filename string, localDirectory string, serverAddr string, e Encode
 	ch <- Progress{Type: HANDSHAKING, Message: "Sending client version", Percentage: 0}
 	b, _ := e.Encode(&pkt)
 	conn.Write(b)
-	ct := NewClientTransfer(filename, localDirectory, config, ch)
+	ct := newClientTransfer(filename, localDirectory, config, ch)
 	readPackets(conn, e, ct, onVersionConfirmedState)
 }

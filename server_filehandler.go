@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-func sendFile(client string, e Encoder, t *ServerTransfer) {
+func sendFile(client string, e Encoder, t *serverTransfer) {
 	listeningAddr, err := net.ResolveUDPAddr("udp", client)
 	if err != nil {
 		log.Println("Error resolving: " + client)
 		return
 	}
-	file, err := os.Open(t.FullPath()) // For read access.
+	file, err := os.Open(t.fullPath()) // For read access.
 	if err != nil {
 		log.Println("Error opening file: " + err.Error())
 	}
@@ -26,8 +26,8 @@ func sendFile(client string, e Encoder, t *ServerTransfer) {
 	}
 	filesize := stat.Size()
 	log.Println(filesize)
-	blockSize := t.Config().BlockSize
-	transferRate := float64(t.Config().TransferRate) * 0.125 //get the transfer in bytes per second
+	blockSize := t.config().BlockSize
+	transferRate := float64(t.config().TransferRate) * 0.125 //get the transfer in bytes per second
 
 	blockRate := int(math.Floor(transferRate / float64(blockSize))) //how many blocks we can send in one second
 	numBlocks := int(math.Ceil(float64(filesize) / float64(blockSize)))
@@ -98,7 +98,7 @@ func sendFile(client string, e Encoder, t *ServerTransfer) {
 			}
 			if msg.msgType == ERROR_RATE {
 				errorRate := msg.payload.(float64)
-				updateSendRate(errorRate, &increaseCount, t.Config(), blockRateCh)
+				updateSendRate(errorRate, &increaseCount, t.config(), blockRateCh)
 			}
 		case ch := <-canStopRetransmit:
 			ch <- canStop
