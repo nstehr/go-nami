@@ -10,7 +10,7 @@ Golang library for fast file transfers.  Not protocol compatible, but heavily in
   e := gonami.BsonEncoder{}
   client := gonami.NewClient(downloadDir, config, e)
 
-  client.GetFile(m["name"].(string), host)
+  client.GetFile(filename, host)
   for p := range progress {
   	log.Println(p)
   }
