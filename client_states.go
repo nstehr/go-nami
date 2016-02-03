@@ -119,6 +119,7 @@ func acceptFileSizeState(pkt *Packet, e Encoder, conn net.Conn, t transfer) stat
 	return transferDoneState
 }
 func transferDoneState(pkt *Packet, e Encoder, conn net.Conn, t transfer) stateFn {
+	t.updateProgress(Progress{Type: TRANSFER_DONE, Message: "Transfer Done", Percentage: 100})
 	return nil
 }
 

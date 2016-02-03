@@ -6,6 +6,7 @@ const (
 	HANDSHAKING ProgressType = iota
 	TRANSFERRING
 	ERROR
+	TRANSFER_DONE
 )
 
 type Progress struct {
